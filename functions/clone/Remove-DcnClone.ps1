@@ -193,34 +193,38 @@
             # Loop through each of the results
             foreach ($item in $clone.Group) {
 
+                # Make up the data from the network path
+                try {
+                    [uri]$uri = New-Object System.Uri($item.ImageLocation)
+                    $uriHost = $uri.Host
+                }
+                catch {
+                    Stop-PSFFunction -Message "The image location $ImageNetworkPath is not valid" -ErrorRecord $_ -Target $ImageNetworkPath
+                    return
+                }
+
                 # Setup the computer object
-                $computer = [PsfComputer]$item.HostName
+                $computer = [PsfComputer]$uriHost
 
                 if (-not $computer.IsLocalhost) {
                     # Get the result for the remote test
-                    try {
-                        $resultPSRemote = Test-DcnRemoting -ComputerName $item.HostName -Credential $Credential -EnableException
+                    $resultPSRemote = Test-DcnRemoting -ComputerName $uriHost -Credential $Credential
 
-                        # Check the result
-                        if ($resultPSRemote.Result) {
+                    # Check the result
+                    if ($resultPSRemote.Result) {
 
-                            $command = [scriptblock]::Create("Import-Module dbaclone")
+                        $command = [scriptblock]::Create("Import-Module dbaclone -Force")
 
-                            try {
-                                Invoke-PSFCommand -ComputerName $computer -ScriptBlock $command -Credential $Credential
-                            }
-                            catch {
-                                Stop-PSFFunction -Message "Couldn't import module remotely" -Target $command
-                                return
-                            }
+                        try {
+                            Invoke-PSFCommand -ComputerName $computer -ScriptBlock $command -Credential $Credential
                         }
-                        else {
-                            Stop-PSFFunction -Message "Couldn't connect to host remotely.`nVerify that the specified computer name is valid, that the computer is accessible over the network, and that a firewall exception for the WinRM service is enabled and allows access from this computer" -Target $resultPSRemote -Continue
+                        catch {
+                            Stop-PSFFunction -Message "Couldn't import module remotely" -Target $command
+                            return
                         }
                     }
-                    catch {
-                        Stop-PSFFunction -Message "Something went wrong testing if the host is remote" -Target $item -ErrordRecord $_
-                        return
+                    else {
+                        Stop-PSFFunction -Message "Couldn't connect to host remotely.`nVerify that the specified computer name is valid, that the computer is accessible over the network, and that a firewall exception for the WinRM service is enabled and allows access from this computer" -Target $resultPSRemote -Continue
                     }
                 }
 
